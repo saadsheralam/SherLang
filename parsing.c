@@ -19,6 +19,50 @@ void add_history(char* unused) {}
 #include <editline/readline.h>
 #endif
 
+enum { SVAL_NUM, SVAL_ERR };
+enum { ERR_DIV_ZERO, ERR_BAD_OP, ERR_BAD_NUM };
+
+typedef struct {
+  int type; 
+  long num; 
+  int err; 
+} sval; 
+
+sval sval_num(long x){
+  sval v; 
+  v.type = SVAL_NUM; 
+  v.num = x; 
+  return v; 
+}
+
+sval sval_err(int x){
+  sval v; 
+  v.type = SVAL_ERR; 
+  v.err = x; 
+  return v; 
+}
+
+void sval_print(sval v){
+  switch(v.type){
+    case SVAL_NUM: printf("%li\n", v.num); break; 
+    case SVAL_ERR: 
+      if (v.err == ERR_DIV_ZERO) {
+        printf("Error: Division By Zero!");
+      } 
+      if (v.err == ERR_BAD_OP) {
+        printf("Error: Invalid Operator!");
+      }
+      if (v.err == ERR_BAD_NUM) {
+        printf("Error: Invalid Number!");
+      }
+    break; 
+  }
+}
+
+// print sval with newline 
+void sval_println(sval v) { sval_print(v); putchar('\n'); }
+
+
 // basic count total nodes in tree
 int number_of_nodes(mpc_ast_t* t){
   
@@ -38,24 +82,47 @@ int number_of_nodes(mpc_ast_t* t){
   return 0; 
 }
 
-long eval_op(long x, char* op, long y) {
-  if (strcmp(op, "+") == 0) { return x + y; }
-  if (strcmp(op, "-") == 0) { return x - y; }
-  if (strcmp(op, "*") == 0) { return x * y; }
-  if (strcmp(op, "/") == 0) { return x / y; }
-  return 0;
+sval eval_op(sval x, char* op, sval y) {
+
+  // Error for invalid number
+  if (x.type == SVAL_ERR) { return x; }
+  if (y.type == SVAL_ERR) { return y; }
+
+  // proceed with evaluation if valid number 
+  if (strcmp(op, "+") == 0) { return sval_num(x.num + y.num); }
+  if (strcmp(op, "-") == 0) { return sval_num(x.num - y.num); }
+  if (strcmp(op, "*") == 0) { return sval_num(x.num * y.num); }
+  if (strcmp(op, "/") == 0) { 
+
+    // error if div by zero 
+    if(y.num == 0){
+      return sval_err(ERR_DIV_ZERO);
+    }
+    return sval_num(x.num / y.num); 
+  }
+
+  // error for invalid op 
+  return sval_err(ERR_BAD_OP);
 }
 
-long eval(mpc_ast_t* t){
+sval eval(mpc_ast_t* t){
   // If the node is tagged as a number 
   if(strstr(t->tag, "number")){
-    return atoi(t->contents);  
+    errno = 0; 
+
+    // convert num to long, error if conv not succesful
+    long x = strtol(t->contents, NULL, 10); 
+
+    if (errno == ERANGE) {
+      return sval_err(ERR_BAD_NUM); 
+    } 
+    return sval_num(x); 
   }
 
   // the operator is always the second child, the first child is '('
   char* op = t->children[1]->contents; 
 
-  long x = eval(t->children[2]); 
+  sval x = eval(t->children[2]); 
 
   int i = 3; 
   while(strstr(t->children[i]->tag, "expr")){
@@ -95,8 +162,8 @@ int main(int argc, char** argv) {
     mpc_result_t r;
     if (mpc_parse("<stdin>", input, SherLang, &r)) {
       // mpc_ast_print(r.output);
-      long result = eval(r.output); 
-      printf("%li\n", result); 
+      sval result = eval(r.output); 
+      sval_println(result); 
       mpc_ast_delete(r.output);
     } else {
       mpc_err_print(r.error);
