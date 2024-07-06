@@ -19,139 +19,294 @@ void add_history(char* unused) {}
 #include <editline/readline.h>
 #endif
 
-enum { SVAL_NUM, SVAL_ERR };
-enum { ERR_DIV_ZERO, ERR_BAD_OP, ERR_BAD_NUM };
+/* Add SYM and SEXPR as possible lval types */
+enum { LVAL_ERR, LVAL_NUM, LVAL_SYM, LVAL_SEXPR };
 
-typedef struct {
-  int type; 
-  long num; 
-  int err; 
-} sval; 
+typedef struct lval {
+  int type;
+  long num;
 
-sval sval_num(long x){
-  sval v; 
-  v.type = SVAL_NUM; 
-  v.num = x; 
-  return v; 
+  // represent error and symbols as strings
+  char* err;
+  char* sym;
+
+  // maintain count and pointer to list of sval* to represent s expressions (this is the fundamental cons cell in LISP)
+  // here all s-expressions are stored recursively
+  int count;
+  struct lval** cell;
+} lval;
+
+// Function definitions
+lval* lval_num(long x); 
+lval* lval_err(char* m); 
+lval* lval_sym(char* s); 
+lval* lval_sexpr(void);
+void lval_del(lval* v); 
+lval* lval_add(lval* v, lval* x); 
+void lval_expr_print(lval* v, char open, char close); 
+void lval_print(lval* v); 
+void lval_println(lval* v); 
+lval* lval_read_num(mpc_ast_t* t);
+lval* lval_read(mpc_ast_t* t);  
+lval* lval_eval_sexpr(lval* v); 
+lval* lval_eval(lval* v); 
+lval* lval_pop(lval* v, int i); 
+lval* lval_take(lval* v, int i); 
+lval* builtin_op(lval* a, char* op); 
+
+
+// create pointer for lval num type 
+lval* lval_num(long x) {
+  lval* v = malloc(sizeof(lval));
+  v->type = LVAL_NUM;
+  v->num = x;
+  return v;
 }
 
-sval sval_err(int x){
-  sval v; 
-  v.type = SVAL_ERR; 
-  v.err = x; 
-  return v; 
+// create pointer for lval err type 
+lval* lval_err(char* m) {
+  lval* v = malloc(sizeof(lval));
+  v->type = LVAL_ERR;
+  v->err = malloc(strlen(m) + 1);
+  strcpy(v->err, m);
+  return v;
 }
 
-void sval_print(sval v){
-  switch(v.type){
-    case SVAL_NUM: printf("%li\n", v.num); break; 
-    case SVAL_ERR: 
-      if (v.err == ERR_DIV_ZERO) {
-        printf("Error: Division By Zero!");
-      } 
-      if (v.err == ERR_BAD_OP) {
-        printf("Error: Invalid Operator!");
+// create pointer for lval symbol type 
+lval* lval_sym(char* s) {
+  lval* v = malloc(sizeof(lval));
+  v->type = LVAL_SYM;
+  v->sym = malloc(strlen(s) + 1);
+  strcpy(v->sym, s);
+  return v;
+}
+
+// create pointer for lval s-expression type 
+lval* lval_sexpr(void) {
+  lval* v = malloc(sizeof(lval));
+  v->type = LVAL_SEXPR;
+  v->count = 0;
+  v->cell = NULL;
+  return v;
+}
+
+// cleanup memory allocated to lval 
+void lval_del(lval* v) {
+
+  switch (v->type) {
+    case LVAL_NUM: break;    
+    case LVAL_ERR: free(v->err); break;
+    case LVAL_SYM: free(v->sym); break;
+    case LVAL_SEXPR:
+      // delete all lvals within lval 
+      for (int i = 0; i < v->count; i++) {
+        lval_del(v->cell[i]);
       }
-      if (v.err == ERR_BAD_NUM) {
-        printf("Error: Invalid Number!");
-      }
-    break; 
+      free(v->cell);
+    break;
+  }
+  
+  free(v);
+}
+
+lval* lval_add(lval* v, lval* x) {
+  v->count++;
+  v->cell = realloc(v->cell, sizeof(lval*) * v->count);
+  v->cell[v->count-1] = x;
+  return v;
+}
+
+void lval_expr_print(lval* v, char open, char close) {
+  putchar(open);
+  for (int i = 0; i < v->count; i++) {
+    
+    // print lval within cell 
+    lval_print(v->cell[i]);
+    
+    // don't print trailing space 
+    if (i != (v->count-1)) {
+      putchar(' ');
+    }
+  }
+  putchar(close);
+}
+
+void lval_print(lval* v) {
+  switch (v->type) {
+    case LVAL_NUM: printf("%li", v->num); break;
+    case LVAL_ERR: printf("Error: %s", v->err); break;
+    case LVAL_SYM: printf("%s", v->sym); break;
+    case LVAL_SEXPR: lval_expr_print(v, '(', ')'); break;
   }
 }
 
-// print sval with newline 
-void sval_println(sval v) { sval_print(v); putchar('\n'); }
+void lval_println(lval* v) { 
+  lval_print(v); 
+  putchar('\n');   
+}
 
+lval* lval_read_num(mpc_ast_t* t) {
+  errno = 0;
+  long x = strtol(t->contents, NULL, 10);
+  if(errno == ERANGE){
+    return lval_err("invalid number"); 
+  }
 
-// basic count total nodes in tree
-int number_of_nodes(mpc_ast_t* t){
+  return lval_num(x); 
+}
+
+lval* lval_read(mpc_ast_t* t) {
   
-  if(t->children_num == 0){
-    return 1; 
+  if (strstr(t->tag, "number")) { 
+    return lval_read_num(t); 
+  }
+
+  if (strstr(t->tag, "symbol")) { 
+    return lval_sym(t->contents); 
+  }
+  
+  // create empty list of lvals for root/s-expr
+  lval* x = NULL;
+  if (strcmp(t->tag, ">") == 0) { 
+    x = lval_sexpr(); 
   } 
 
-  if(t->children_num >= 1){
-    int total = 1;
-    for(int i = 0; i < t->children_num; i++){
-      total = total + number_of_nodes(t->children[i]); 
+  if (strstr(t->tag, "sexpr"))  { 
+    x = lval_sexpr(); 
+  }
+  
+  // fill list with any valid expressions 
+  for (int i = 0; i < t->children_num; i++) {
+    if (strcmp(t->children[i]->contents, "(") == 0) { continue; }
+    if (strcmp(t->children[i]->contents, ")") == 0) { continue; }
+    if (strcmp(t->children[i]->tag,  "regex") == 0) { continue; }
+    x = lval_add(x, lval_read(t->children[i]));
+  }
+  
+  return x;
+}
+
+lval* lval_eval_sexpr(lval* v) {
+
+  // evaluate children of s-expression 
+  for (int i = 0; i < v->count; i++) {
+    v->cell[i] = lval_eval(v->cell[i]);
+  }
+
+  // check if any children evaluates to an error
+  for (int i = 0; i < v->count; i++) {
+    if (v->cell[i]->type == LVAL_ERR) { 
+      return lval_take(v, i); 
+    }
+  }
+
+  // empty expression 
+  if (v->count == 0) { 
+    return v; 
+  }
+
+  // single expression 
+  if (v->count == 1) { return lval_take(v, 0); }
+
+  // ensure first element is symbol 
+  lval* f = lval_pop(v, 0);
+  if (f->type != LVAL_SYM) {
+    lval_del(f); lval_del(v);
+    return lval_err("S-expression Does not start with symbol!");
+  }
+
+  lval* result = builtin_op(v, f->sym);
+  lval_del(f);
+  return result;
+}
+
+lval* lval_eval(lval* v) {
+  if (v->type == LVAL_SEXPR) { 
+    return lval_eval_sexpr(v); 
+  }
+  return v;
+}
+
+lval* lval_pop(lval* v, int i) {
+  lval* x = v->cell[i];
+
+  // Shift memory after the item at "i" over the top 
+  memmove(&v->cell[i], &v->cell[i+1],
+    sizeof(lval*) * (v->count-i-1));
+
+  v->count--;
+
+  // Reallocate the memory used 
+  v->cell = realloc(v->cell, sizeof(lval*) * v->count);
+  return x;
+}
+
+lval* lval_take(lval* v, int i) {
+  lval* x = lval_pop(v, i);
+  lval_del(v);
+  return x;
+}
+
+lval* builtin_op(lval* a, char* op) {
+
+  // Ensure all arguments are numbers 
+  for (int i = 0; i < a->count; i++) {
+    if (a->cell[i]->type != LVAL_NUM) {
+      lval_del(a);
+      return lval_err("Cannot operate on non-number!");
+    }
+  }
+
+  lval* x = lval_pop(a, 0);
+
+  // If no arguments and sub then perform unary negation 
+  if ((strcmp(op, "-") == 0) && a->count == 0) {
+    x->num = -x->num;
+  }
+
+  while (a->count > 0) {
+
+    /* Pop the next element */
+    lval* y = lval_pop(a, 0);
+
+    if (strcmp(op, "+") == 0) { x->num += y->num; }
+    if (strcmp(op, "-") == 0) { x->num -= y->num; }
+    if (strcmp(op, "*") == 0) { x->num *= y->num; }
+    if (strcmp(op, "/") == 0) {
+      if (y->num == 0) {
+        lval_del(x); lval_del(y);
+        x = lval_err("Division By Zero!"); break;
+      }
+      x->num /= y->num;
     }
 
-    return total; 
+    lval_del(y);
   }
 
-  return 0; 
+  lval_del(a); return x;
 }
 
-sval eval_op(sval x, char* op, sval y) {
 
-  // Error for invalid number
-  if (x.type == SVAL_ERR) { return x; }
-  if (y.type == SVAL_ERR) { return y; }
-
-  // proceed with evaluation if valid number 
-  if (strcmp(op, "+") == 0) { return sval_num(x.num + y.num); }
-  if (strcmp(op, "-") == 0) { return sval_num(x.num - y.num); }
-  if (strcmp(op, "*") == 0) { return sval_num(x.num * y.num); }
-  if (strcmp(op, "/") == 0) { 
-
-    // error if div by zero 
-    if(y.num == 0){
-      return sval_err(ERR_DIV_ZERO);
-    }
-    return sval_num(x.num / y.num); 
-  }
-
-  // error for invalid op 
-  return sval_err(ERR_BAD_OP);
-}
-
-sval eval(mpc_ast_t* t){
-  // If the node is tagged as a number 
-  if(strstr(t->tag, "number")){
-    errno = 0; 
-
-    // convert num to long, error if conv not succesful
-    long x = strtol(t->contents, NULL, 10); 
-
-    if (errno == ERANGE) {
-      return sval_err(ERR_BAD_NUM); 
-    } 
-    return sval_num(x); 
-  }
-
-  // the operator is always the second child, the first child is '('
-  char* op = t->children[1]->contents; 
-
-  sval x = eval(t->children[2]); 
-
-  int i = 3; 
-  while(strstr(t->children[i]->tag, "expr")){
-    x = eval_op(x, op, eval(t->children[i]));
-    i++;  
-  }
-
-  return x; 
-}
 
 int main(int argc, char** argv) {
-
-  // create parsers   
-  mpc_parser_t* Number   = mpc_new("number");
-  mpc_parser_t* Operator = mpc_new("operator");
-  mpc_parser_t* Expr     = mpc_new("expr");
-  mpc_parser_t* SherLang    = mpc_new("lispy");
   
-  // define polish notation grammar 
+  mpc_parser_t* Number = mpc_new("number");
+  mpc_parser_t* Symbol = mpc_new("symbol");
+  mpc_parser_t* Sexpr  = mpc_new("sexpr");
+  mpc_parser_t* Expr   = mpc_new("expr");
+  mpc_parser_t* SherLang  = mpc_new("sherlang");
+  
   mpca_lang(MPCA_LANG_DEFAULT,
-    "                                                     \
-      number   : /-?[0-9]+/ ;                             \
-      operator : '+' | '-' | '*' | '/' ;                  \
-      expr     : <number> | '(' <operator> <expr>+ ')' ;  \
-      lispy    : /^/ <operator> <expr>+ /$/ ;             \
+    "                                          \
+      number : /-?[0-9]+/ ;                    \
+      symbol : '+' | '-' | '*' | '/' ;         \
+      sexpr  : '(' <expr>* ')' ;               \
+      expr   : <number> | <symbol> | <sexpr> ; \
+      sherlang  : /^/ <expr>* /$/ ;               \
     ",
-    Number, Operator, Expr, SherLang);
+    Number, Symbol, Sexpr, Expr, SherLang);
   
-  puts("SherLang Version 0.0.0.0.2");
+  puts("SherLang Version 0.0.0.0.5");
   puts("Press Ctrl+c to Exit\n");
   
   while (1) {
@@ -161,20 +316,22 @@ int main(int argc, char** argv) {
     
     mpc_result_t r;
     if (mpc_parse("<stdin>", input, SherLang, &r)) {
-      // mpc_ast_print(r.output);
-      sval result = eval(r.output); 
-      sval_println(result); 
+      // lval* x = lval_eval(lval_read(r.output));
+      // lval* x = lval_read(r.output); 
+      lval* x = lval_eval(lval_read(r.output));
+      lval_println(x);
+      lval_del(x);
       mpc_ast_delete(r.output);
-    } else {
+    } else {    
       mpc_err_print(r.error);
       mpc_err_delete(r.error);
     }
     
     free(input);
+    
   }
   
-  // cleanup parsers
-  mpc_cleanup(4, Number, Operator, Expr, SherLang);
+  mpc_cleanup(5, Number, Symbol, Sexpr, Expr, SherLang);
   
   return 0;
 }
