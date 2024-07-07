@@ -1,4 +1,5 @@
 #include "mpc.h"
+#include <math.h>
 
 #ifdef _WIN32
 
@@ -24,7 +25,7 @@ enum { LVAL_ERR, LVAL_NUM, LVAL_SYM, LVAL_SEXPR };
 
 typedef struct lval {
   int type;
-  long num;
+  double num; 
 
   // represent error and symbols as strings
   char* err;
@@ -37,7 +38,7 @@ typedef struct lval {
 } lval;
 
 // Function definitions
-lval* lval_num(long x); 
+lval* lval_num(double x); 
 lval* lval_err(char* m); 
 lval* lval_sym(char* s); 
 lval* lval_sexpr(void);
@@ -56,7 +57,7 @@ lval* builtin_op(lval* a, char* op);
 
 
 // create pointer for lval num type 
-lval* lval_num(long x) {
+lval* lval_num(double x) {
   lval* v = malloc(sizeof(lval));
   v->type = LVAL_NUM;
   v->num = x;
@@ -133,7 +134,7 @@ void lval_expr_print(lval* v, char open, char close) {
 
 void lval_print(lval* v) {
   switch (v->type) {
-    case LVAL_NUM: printf("%li", v->num); break;
+    case LVAL_NUM: printf("%.2f", v->num); break;
     case LVAL_ERR: printf("Error: %s", v->err); break;
     case LVAL_SYM: printf("%s", v->sym); break;
     case LVAL_SEXPR: lval_expr_print(v, '(', ')'); break;
@@ -147,21 +148,31 @@ void lval_println(lval* v) {
 
 lval* lval_read_num(mpc_ast_t* t) {
   errno = 0;
-  long x = strtol(t->contents, NULL, 10);
-  if(errno == ERANGE){
-    return lval_err("invalid number"); 
+  double x = strtod(t->contents, NULL);
+  if (errno == ERANGE) {
+    return lval_err("invalid number");
   }
+  
+  // long x = strtol(t->contents, NULL, 10);
+  // if(errno == ERANGE){
+  //   return lval_err("invalid number"); 
+  // } 
+
 
   return lval_num(x); 
 }
 
 lval* lval_read(mpc_ast_t* t) {
+
+  // printf("Value: %s", t->contents); 
   
   if (strstr(t->tag, "number")) { 
+    // printf("Number mai"); 
     return lval_read_num(t); 
   }
 
   if (strstr(t->tag, "symbol")) { 
+    // printf("Symbol mai"); 
     return lval_sym(t->contents); 
   }
   
@@ -272,7 +283,7 @@ lval* builtin_op(lval* a, char* op) {
     if (strcmp(op, "+") == 0) { x->num += y->num; }
     if (strcmp(op, "-") == 0) { x->num -= y->num; }
     if (strcmp(op, "*") == 0) { x->num *= y->num; }
-    if (strcmp(op, "%") == 0) { x->num %= y-> num; }
+    if (strcmp(op, "%") == 0) { x->num = fmod(x->num, y->num); }
     if (strcmp(op, "/") == 0) {
       if (y->num == 0) {
         lval_del(x); lval_del(y);
@@ -299,7 +310,7 @@ int main(int argc, char** argv) {
   
   mpca_lang(MPCA_LANG_DEFAULT,
     "                                          \
-      number : /-?[0-9]+/ ;                    \
+      number : /[+-]?([0-9]*[.])?[0-9]+/ ;                    \
       symbol : '+' | '-' | '*' | '/' | '%' ;         \
       sexpr  : '(' <expr>* ')' ;               \
       expr   : <number> | <symbol> | <sexpr> ; \
@@ -318,7 +329,10 @@ int main(int argc, char** argv) {
     mpc_result_t r;
     if (mpc_parse("<stdin>", input, SherLang, &r)) {
       // lval* x = lval_eval(lval_read(r.output));
+      // lval* x = lval_read(r.output);
+      // printf("before");  
       // lval* x = lval_read(r.output); 
+      // printf("after"); 
       lval* x = lval_eval(lval_read(r.output));
       lval_println(x);
       lval_del(x);
