@@ -272,6 +272,7 @@ lval* builtin_op(lval* a, char* op) {
     if (strcmp(op, "+") == 0) { x->num += y->num; }
     if (strcmp(op, "-") == 0) { x->num -= y->num; }
     if (strcmp(op, "*") == 0) { x->num *= y->num; }
+    if (strcmp(op, "%") == 0) { x->num %= y-> num; }
     if (strcmp(op, "/") == 0) {
       if (y->num == 0) {
         lval_del(x); lval_del(y);
@@ -299,7 +300,7 @@ int main(int argc, char** argv) {
   mpca_lang(MPCA_LANG_DEFAULT,
     "                                          \
       number : /-?[0-9]+/ ;                    \
-      symbol : '+' | '-' | '*' | '/' ;         \
+      symbol : '+' | '-' | '*' | '/' | '%' ;         \
       sexpr  : '(' <expr>* ')' ;               \
       expr   : <number> | <symbol> | <sexpr> ; \
       sherlang  : /^/ <expr>* /$/ ;               \
