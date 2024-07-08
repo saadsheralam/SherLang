@@ -269,9 +269,7 @@ lval* lval_pop(lval* v, int i) {
   lval* x = v->cell[i];
 
   // Shift memory after the item at "i" over the top 
-  memmove(&v->cell[i], &v->cell[i+1],
-    sizeof(lval*) * (v->count-i-1));
-
+  memmove(&v->cell[i], &v->cell[i+1], sizeof(lval*) * (v->count-i-1));
   v->count--;
 
   // Reallocate the memory used 
@@ -394,12 +392,35 @@ lval* lval_join(lval* x, lval* y) {
   return x;
 }
 
+lval* builtin_len(lval* a){
+  LASSERT(a, a->count == 1, "Function 'len' passed too many arguments!");
+  LASSERT(a, a->cell[0]->type == LVAL_QEXPR, "Function 'len' passed incorrect type!");
+
+  double len = a->cell[0]->count; 
+  lval_del(a); 
+  return lval_num(len);    
+}
+
+lval* builtin_cons(lval* a){
+  LASSERT(a, a->count == 2, "Function 'cons' passed too many/few arguments!");
+  LASSERT(a, a->cell[0]->type == LVAL_NUM, "Function 'len' passed incorrect paramter, first argument should be a number!"); 
+  LASSERT(a, a->cell[1]->type == LVAL_QEXPR, "Function 'len' passed incorrect paramter, second argument should be a q-expresion!"); 
+
+  lval* v = lval_qexpr(); 
+  lval_add(v, a->cell[0]); 
+  v = lval_join(v, a->cell[1]); 
+  return v;  
+}
+
+
 lval* builtin(lval* a, char* func) {
   if (strcmp("list", func) == 0) { return builtin_list(a); }
   if (strcmp("head", func) == 0) { return builtin_head(a); }
   if (strcmp("tail", func) == 0) { return builtin_tail(a); }
   if (strcmp("join", func) == 0) { return builtin_join(a); }
   if (strcmp("eval", func) == 0) { return builtin_eval(a); }
+  if (strcmp("cons", func) == 0) { return builtin_cons(a); }
+  if (strcmp("len", func) == 0) { return builtin_len(a); }
   if (strstr("+-/*", func)) { return builtin_op(a, func); }
   lval_del(a);
   return lval_err("Unknown Function!");
@@ -415,14 +436,14 @@ int main(int argc, char** argv) {
   mpc_parser_t* SherLang  = mpc_new("sherlang");
 
   mpca_lang(MPCA_LANG_DEFAULT,
-  "                                                             \
-    number : /[+-]?([0-9]*[.])?[0-9]+/ ;                        \
-    symbol : \"list\" | \"head\" | \"tail\"                     \
-           | \"join\" | \"eval\" | '+' | '-' | '*' | '/' | '%'; \
-    sexpr  : '(' <expr>* ')' ;                                  \
-    qexpr  : '{' <expr>* '}' ;                                  \
-    expr   : <number> | <symbol> | <sexpr> | <qexpr> ;          \
-    sherlang  : /^/ <expr>* /$/ ;                               \
+  "                                                                         \
+    number : /[+-]?([0-9]*[.])?[0-9]+/ ;                                    \
+    symbol : \"list\" | \"head\" | \"tail\"                                 \
+           | \"join\" | \"eval\" | \"len\" | \"cons\" | '+' | '-' | '*' | '/' | '%';  \
+    sexpr  : '(' <expr>* ')' ;                                              \
+    qexpr  : '{' <expr>* '}' ;                                              \
+    expr   : <number> | <symbol> | <sexpr> | <qexpr> ;                      \
+    sherlang  : /^/ <expr>* /$/ ;                                           \
   ",
   Number, Symbol, Sexpr, Qexpr, Expr, SherLang);
 
