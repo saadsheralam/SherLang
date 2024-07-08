@@ -21,7 +21,7 @@ void add_history(char* unused) {}
 #endif
 
 /* Add SYM and SEXPR as possible lval types */
-enum { LVAL_ERR, LVAL_NUM, LVAL_SYM, LVAL_SEXPR };
+enum { LVAL_ERR, LVAL_NUM, LVAL_SYM, LVAL_SEXPR, LVAL_QEXPR };
 
 typedef struct lval {
   int type;
@@ -91,6 +91,14 @@ lval* lval_sexpr(void) {
   return v;
 }
 
+lval* lval_qexpr(void) {
+  lval* v = malloc(sizeof(lval)); 
+  v->type = LVAL_QEXPR; 
+  v->count = 0; 
+  v->cell = NULL; 
+  return v; 
+}
+
 // cleanup memory allocated to lval 
 void lval_del(lval* v) {
 
@@ -98,6 +106,8 @@ void lval_del(lval* v) {
     case LVAL_NUM: break;    
     case LVAL_ERR: free(v->err); break;
     case LVAL_SYM: free(v->sym); break;
+
+    case LVAL_QEXPR: 
     case LVAL_SEXPR:
       // delete all lvals within lval 
       for (int i = 0; i < v->count; i++) {
@@ -105,6 +115,7 @@ void lval_del(lval* v) {
       }
       free(v->cell);
     break;
+
   }
   
   free(v);
@@ -138,6 +149,7 @@ void lval_print(lval* v) {
     case LVAL_ERR: printf("Error: %s", v->err); break;
     case LVAL_SYM: printf("%s", v->sym); break;
     case LVAL_SEXPR: lval_expr_print(v, '(', ')'); break;
+    case LVAL_QEXPR: lval_expr_print(v, '{', '}'); break; 
   }
 }
 
@@ -185,11 +197,19 @@ lval* lval_read(mpc_ast_t* t) {
   if (strstr(t->tag, "sexpr"))  { 
     x = lval_sexpr(); 
   }
+
+  if (strstr(t->tag, "qexpr"))  { 
+    // printf("Start of qexpr"); 
+    x = lval_qexpr(); 
+  }
+
   
   // fill list with any valid expressions 
   for (int i = 0; i < t->children_num; i++) {
     if (strcmp(t->children[i]->contents, "(") == 0) { continue; }
     if (strcmp(t->children[i]->contents, ")") == 0) { continue; }
+    if (strcmp(t->children[i]->contents, "{") == 0) { continue; }
+    if (strcmp(t->children[i]->contents, "}") == 0) { continue; }
     if (strcmp(t->children[i]->tag,  "regex") == 0) { continue; }
     x = lval_add(x, lval_read(t->children[i]));
   }
@@ -305,19 +325,21 @@ int main(int argc, char** argv) {
   mpc_parser_t* Number = mpc_new("number");
   mpc_parser_t* Symbol = mpc_new("symbol");
   mpc_parser_t* Sexpr  = mpc_new("sexpr");
+  mpc_parser_t* Qexpr  = mpc_new("qexpr");
   mpc_parser_t* Expr   = mpc_new("expr");
   mpc_parser_t* SherLang  = mpc_new("sherlang");
-  
+
   mpca_lang(MPCA_LANG_DEFAULT,
-    "                                          \
-      number : /[+-]?([0-9]*[.])?[0-9]+/ ;                    \
-      symbol : '+' | '-' | '*' | '/' | '%' ;         \
-      sexpr  : '(' <expr>* ')' ;               \
-      expr   : <number> | <symbol> | <sexpr> ; \
-      sherlang  : /^/ <expr>* /$/ ;               \
-    ",
-    Number, Symbol, Sexpr, Expr, SherLang);
-  
+  "                                                    \
+    number : /[+-]?([0-9]*[.])?[0-9]+/ ;               \
+    symbol : '+' | '-' | '*' | '/' | '%';              \
+    sexpr  : '(' <expr>* ')' ;                         \
+    qexpr  : '{' <expr>* '}' ;                         \
+    expr   : <number> | <symbol> | <sexpr> | <qexpr> ; \
+    sherlang  : /^/ <expr>* /$/ ;                      \
+  ",
+  Number, Symbol, Sexpr, Qexpr, Expr, SherLang);
+
   puts("SherLang Version 0.0.0.0.5");
   puts("Press Ctrl+c to Exit\n");
   
@@ -346,7 +368,7 @@ int main(int argc, char** argv) {
     
   }
   
-  mpc_cleanup(5, Number, Symbol, Sexpr, Expr, SherLang);
+  mpc_cleanup(6, Number, Symbol, Sexpr, Qexpr, Expr, SherLang);
   
   return 0;
 }
