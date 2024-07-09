@@ -550,6 +550,27 @@ lval* builtin_cons(lenv* e, lval* a){
   return v;  
 }
 
+lval* builtin_def(lenv* e, lval* a){
+  LASSERT(a, a->cell[0]->type == LVAL_QEXPR, "Function 'def' passed incorrect type!"); 
+
+  // first argument is symbol list 
+  lval* syms = a->cell[0]; 
+
+  for(int i = 0; i < syms->count; i++){
+    LASSERT(a, syms->cell[i]->type == LVAL_SYM, "Function 'def' can not define non-symbol!"); 
+  }
+
+  LASSERT(a, syms->count == a->count - 1, "Function 'def' can not define incorrect number of values to symbols!"); 
+
+  // assign values to symbols 
+  for(int i = 0; i < syms->count; i++){
+    lenv_put(e, syms->cell[i], a->cell[i+1]); 
+  }
+
+  lval_del(a); 
+  return lval_sexpr(); 
+}
+
 void lenv_add_builtin(lenv* e, char* name, lbuiltin func){
   lval* k = lval_sym(name); 
   lval* v = lval_fun(func); 
@@ -566,6 +587,7 @@ void lenv_add_builtins(lenv* e){
   lenv_add_builtin(e, "join", builtin_join);
   lenv_add_builtin(e, "len", builtin_len);
   lenv_add_builtin(e, "cons", builtin_cons);
+  lenv_add_builtin(e, "def", builtin_def);
 
   /* Mathematical Functions */
   lenv_add_builtin(e, "+", builtin_add);
