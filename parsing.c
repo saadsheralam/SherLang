@@ -303,6 +303,7 @@ lval* lval_read_num(mpc_ast_t* t) {
 
 lval* lval_read(mpc_ast_t* t) {
 
+
   // printf("Value: %s", t->contents); 
   
   if (strstr(t->tag, "number")) { 
@@ -416,8 +417,9 @@ lval* builtin_op(lenv* e, lval* a, char* op) {
   // Ensure all arguments are numbers 
   for (int i = 0; i < a->count; i++) {
     if (a->cell[i]->type != LVAL_NUM) {
-      lval_del(a);
-      return lval_err("Cannot operate on non-number. Got type %s", ltype_name(a->cell[i]->type));
+      char* type = ltype_name(a->cell[i]->type);
+      lval_del(a); 
+      return lval_err("Function '%s' passed incorrect type for argument %i. Got %s, Expected Number", op, i, type);
     }
   }
 
@@ -664,7 +666,6 @@ int main(int argc, char** argv) {
   lenv_add_builtins(e);
 
   while (1) {
-  
     char* input = readline("SherLang> ");
     add_history(input);
     
