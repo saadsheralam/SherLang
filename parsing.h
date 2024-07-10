@@ -1,6 +1,7 @@
 #ifndef SHERLANG_H
 #define SHERLANG_H
 #include "mpc.h"
+#include<stdbool.h>
 
 
 struct lval; 
@@ -11,7 +12,7 @@ typedef lval*(*lbuiltin)(lenv*, lval*);
 
 
 // Enum for LISP value types
-enum { LVAL_ERR, LVAL_NUM, LVAL_SYM, LVAL_FUN, LVAL_SEXPR, LVAL_QEXPR }; 
+enum { LVAL_ERR, LVAL_NUM, LVAL_BOOL, LVAL_SYM, LVAL_FUN, LVAL_SEXPR, LVAL_QEXPR }; 
 
 struct lval {
 
@@ -19,7 +20,7 @@ struct lval {
   int type;
   double num; 
   char* err;
-  char* sym;
+  char* sym; 
 
   // Functions 
   lbuiltin builtin;

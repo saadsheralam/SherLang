@@ -95,11 +95,20 @@ lval* lval_lambda(lval* formals, lval* body){
   return v; 
 }
 
+// initialize bool type, by default is false
+lval* lval_bool(void){
+  lval* v = malloc(sizeof(lval)); 
+  v->type = LVAL_BOOL; 
+  v->num = false; 
+  return v; 
+}
+
 // cleanup memory allocated to lval 
 void lval_del(lval* v) {
 
   switch (v->type) {
-    case LVAL_NUM: break;    
+    case LVAL_NUM: break;  
+    case LVAL_BOOL: break;   
     case LVAL_ERR: free(v->err); break;
     case LVAL_SYM: free(v->sym); break;
     case LVAL_FUN: 
@@ -170,6 +179,7 @@ lval* lval_copy(lval* v){
 
   switch(v->type){
     case LVAL_NUM: x->num = v->num; break; 
+    case LVAL_BOOL: x->num = v->num; break; 
     case LVAL_FUN: 
       if(v->builtin){
         x->builtin = v->builtin; 
@@ -211,7 +221,8 @@ int lval_eq(lval* x, lval* y) {
 
   // comparison based on type 
   switch (x->type) {
-    case LVAL_NUM: return (x->num == y->num);
+    case LVAL_NUM: return (x->num == y->num);  
+    case LVAL_BOOL: return (x->num == y->num); 
 
     case LVAL_ERR: return (strcmp(x->err, y->err) == 0);
     case LVAL_SYM: return (strcmp(x->sym, y->sym) == 0);
@@ -263,6 +274,18 @@ lval* lval_read(mpc_ast_t* t) {
 
   if (strstr(t->tag, "symbol")) { 
     // printf("Symbol mai"); 
+
+    // check if true or false, set bool accordingly else set symbol 
+    if(strcmp(t->contents, "true") == 0 || strcmp(t->contents, "false") == 0){
+      lval* v = lval_bool(); 
+      if(strcmp(t->contents, "true") == 0) {
+        v->num = true; 
+      } else {
+        v->num = false; 
+      }
+      return v; 
+    }
+
     return lval_sym(t->contents); 
   }
   
@@ -365,6 +388,7 @@ void lval_expr_print(lval* v, char open, char close) {
 void lval_print(lval* v) {
   switch (v->type) {
     case LVAL_NUM: printf("%.2f", v->num); break;
+    case LVAL_BOOL: printf("%s", v->num ? "true" : "false"); break; 
     case LVAL_ERR: printf("Error: %s", v->err); break;
     case LVAL_SYM: printf("%s", v->sym); break;
     case LVAL_SEXPR: lval_expr_print(v, '(', ')'); break;
@@ -646,18 +670,31 @@ lval* builtin_mod(lenv* e, lval* a) {
 }
 
 lval* builtin_ord(lenv* e, lval* a, char* op) {
-  int r; 
-  if (strcmp(op, "!") == 0) {
-    LASSERT_NUM(op, a, 1);
-    LASSERT_TYPE(op, a, 0, LVAL_NUM); 
+  bool r; 
 
-    r = !(a->cell[0]->num);  
+  if(strcmp(op, "!") == 0) {
+    LASSERT_NUM(op, a, 1);
+
+    if(a->cell[0]->type != LVAL_NUM && a->cell[0]->type != LVAL_BOOL){
+      lval_err("Function '%s' passed incorrect type for argument 0. Got %s, Expected %s.", a->cell[0]->type, "Boolean or Number"); 
+    }
+
+    r = !(a->cell[0]->num); 
 
   } else {
 
     LASSERT_NUM(op, a, 2);
-    LASSERT_TYPE(op, a, 0, LVAL_NUM);
-    LASSERT_TYPE(op, a, 1, LVAL_NUM);
+    // LASSERT_TYPE(op, a, 0, LVAL_NUM);
+    // LASSERT_TYPE(op, a, 1, LVAL_NUM);
+
+    // check types, could be num or bool. both args need not be of the same type 
+    if(a->cell[0]->type != LVAL_NUM && a->cell[0]->type != LVAL_BOOL){
+      lval_err("Function '%s' passed incorrect type for argument 0. Got %s, Expected %s.", a->cell[0]->type, "Boolean or Number"); 
+    }
+
+    if(a->cell[1]->type != LVAL_NUM && a->cell[1]->type != LVAL_BOOL){
+      lval_err("Function '%s' passed incorrect type for argument 1. Got %s, Expected %s.", a->cell[1]->type, "Boolean or Number"); 
+    }
 
     if (strcmp(op, ">")  == 0) {
       r = (a->cell[0]->num >  a->cell[1]->num);
@@ -678,9 +715,11 @@ lval* builtin_ord(lenv* e, lval* a, char* op) {
       r = (a->cell[0]->num && a->cell[1]->num); 
     }
   }
-
+  
   lval_del(a);
-  return lval_num(r);
+  lval* b = lval_bool(); 
+  b->num = r; 
+  return b;
 }
 
 lval* builtin_gt(lenv* e, lval* a) {
@@ -713,7 +752,7 @@ lval* builtin_not(lenv* e, lval* a){
 
 lval* builtin_cmp(lenv* e, lval* a, char* op) {
   LASSERT_NUM(op, a, 2);
-  int r;
+  bool r;
   if (strcmp(op, "==") == 0) {
     r =  lval_eq(a->cell[0], a->cell[1]);
   }
@@ -721,7 +760,10 @@ lval* builtin_cmp(lenv* e, lval* a, char* op) {
     r = !lval_eq(a->cell[0], a->cell[1]);
   }
   lval_del(a);
-  return lval_num(r);
+  lval* b = lval_bool(); 
+  b->num = r; 
+  return b;
+  return b;
 }
 
 lval* builtin_eq(lenv* e, lval* a) {
@@ -962,13 +1004,13 @@ int main(int argc, char** argv) {
   mpc_parser_t* SherLang  = mpc_new("sherlang");
 
   mpca_lang(MPCA_LANG_DEFAULT,
-  "                                                                                   \
-    number : /[+-]?([0-9]*[.])?[0-9]+/ ;                                              \
-    symbol : /[a-zA-Z0-9_+\\-*\\/\\\\=<>!&|]+/ ;                                       \
-    sexpr  : '(' <expr>* ')' ;                                                        \
-    qexpr  : '{' <expr>* '}' ;                                                        \
-    expr   : <number> | <symbol> | <sexpr> | <qexpr> ;                                \
-    sherlang  : /^/ <expr>* /$/ ;                                                     \
+  "                                                             \
+    number :  /[+-]?([0-9]*[.])?[0-9]+/ ;                       \
+    symbol :  /[a-zA-Z0-9_+\\-*\\/\\\\=<>!&|]+/ ;               \
+    sexpr  :  '(' <expr>* ')' ;                                 \
+    qexpr  :  '{' <expr>* '}' ;                                 \
+    expr   :  <number> | <symbol> | <sexpr> | <qexpr> ;         \
+    sherlang  : /^/ <expr>* /$/ ;                               \
   ",
   Number, Symbol, Sexpr, Qexpr, Expr, SherLang);
 
@@ -1003,7 +1045,7 @@ int main(int argc, char** argv) {
   }
   
   lenv_del(e); 
-  mpc_cleanup(6, Number, Symbol, Sexpr, Qexpr, Expr, SherLang);
+  mpc_cleanup(6, Number, Sexpr, Qexpr, Expr, SherLang);
   
   return 0;
 }
