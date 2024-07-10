@@ -152,6 +152,16 @@ lval* lval_take(lval* v, int i) {
   return x;
 }
 
+lval* lval_join(lval* x, lval* y) {
+
+  while (y->count) {
+    x = lval_add(x, lval_pop(y, 0));
+  }
+
+  lval_del(y);
+  return x;
+}
+
 // copy LISP value to a new LISP value. Does not delete previous value. 
 // Also copies the environments within LISP values. 
 lval* lval_copy(lval* v){
@@ -536,7 +546,6 @@ lenv* lenv_copy(lenv* e){
 
 
 
-
 /* Builtin Functions*/
 
 // define macros and helper functions for error checking in builtin functions
@@ -637,23 +646,39 @@ lval* builtin_mod(lenv* e, lval* a) {
 }
 
 lval* builtin_ord(lenv* e, lval* a, char* op) {
-  LASSERT_NUM(op, a, 2);
-  LASSERT_TYPE(op, a, 0, LVAL_NUM);
-  LASSERT_TYPE(op, a, 1, LVAL_NUM);
+  int r; 
+  if (strcmp(op, "!") == 0) {
+    LASSERT_NUM(op, a, 1);
+    LASSERT_TYPE(op, a, 0, LVAL_NUM); 
 
-  int r;
-  if (strcmp(op, ">")  == 0) {
-    r = (a->cell[0]->num >  a->cell[1]->num);
+    r = !(a->cell[0]->num);  
+
+  } else {
+
+    LASSERT_NUM(op, a, 2);
+    LASSERT_TYPE(op, a, 0, LVAL_NUM);
+    LASSERT_TYPE(op, a, 1, LVAL_NUM);
+
+    if (strcmp(op, ">")  == 0) {
+      r = (a->cell[0]->num >  a->cell[1]->num);
+    }
+    if (strcmp(op, "<")  == 0) {
+      r = (a->cell[0]->num <  a->cell[1]->num);
+    }
+    if (strcmp(op, ">=") == 0) {
+      r = (a->cell[0]->num >= a->cell[1]->num);
+    }
+    if (strcmp(op, "<=") == 0) {
+      r = (a->cell[0]->num <= a->cell[1]->num);
+    }
+    if(strcmp(op, "||") == 0){
+      r = (a->cell[0]->num || a->cell[1]->num); 
+    }
+    if(strcmp(op, "&&") == 0){
+      r = (a->cell[0]->num && a->cell[1]->num); 
+    }
   }
-  if (strcmp(op, "<")  == 0) {
-    r = (a->cell[0]->num <  a->cell[1]->num);
-  }
-  if (strcmp(op, ">=") == 0) {
-    r = (a->cell[0]->num >= a->cell[1]->num);
-  }
-  if (strcmp(op, "<=") == 0) {
-    r = (a->cell[0]->num <= a->cell[1]->num);
-  }
+
   lval_del(a);
   return lval_num(r);
 }
@@ -672,6 +697,18 @@ lval* builtin_ge(lenv* e, lval* a) {
 
 lval* builtin_le(lenv* e, lval* a) {
   return builtin_ord(e, a, "<=");
+}
+
+lval* builtin_or(lenv* e, lval* a){
+  return builtin_ord(e, a, "||"); 
+}
+
+lval* builtin_and(lenv* e, lval* a){
+  return builtin_ord(e, a, "&&"); 
+}
+
+lval* builtin_not(lenv* e, lval* a){
+  return builtin_ord(e, a, "!"); 
 }
 
 lval* builtin_cmp(lenv* e, lval* a, char* op) {
@@ -746,16 +783,6 @@ lval* builtin_join(lenv* e, lval* a) {
   }
 
   lval_del(a);
-  return x;
-}
-
-lval* lval_join(lval* x, lval* y) {
-
-  while (y->count) {
-    x = lval_add(x, lval_pop(y, 0));
-  }
-
-  lval_del(y);
   return x;
 }
 
@@ -906,6 +933,9 @@ void lenv_add_builtins(lenv* e){
   lenv_add_builtin(e, "<",  builtin_lt);
   lenv_add_builtin(e, ">=", builtin_ge);
   lenv_add_builtin(e, "<=", builtin_le);
+  lenv_add_builtin(e, "||", builtin_or);
+  lenv_add_builtin(e, "&&", builtin_and);
+  lenv_add_builtin(e, "!", builtin_not);
 }
 
 
@@ -934,7 +964,7 @@ int main(int argc, char** argv) {
   mpca_lang(MPCA_LANG_DEFAULT,
   "                                                                                   \
     number : /[+-]?([0-9]*[.])?[0-9]+/ ;                                              \
-    symbol : /[a-zA-Z0-9_+\\-*\\/\\\\=<>!&]+/ ;                                       \
+    symbol : /[a-zA-Z0-9_+\\-*\\/\\\\=<>!&|]+/ ;                                       \
     sexpr  : '(' <expr>* ')' ;                                                        \
     qexpr  : '{' <expr>* '}' ;                                                        \
     expr   : <number> | <symbol> | <sexpr> | <qexpr> ;                                \
