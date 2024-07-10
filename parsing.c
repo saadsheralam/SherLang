@@ -1,4 +1,5 @@
 #include "mpc.h"
+#include "parsing.h" 
 #include <math.h>
 
 #ifdef _WIN32
@@ -20,83 +21,7 @@ void add_history(char* unused) {}
 #include <editline/readline.h>
 #endif
 
-// Forward declarations 
-struct lval; 
-struct lenv; 
-typedef struct lval lval; 
-typedef struct lenv lenv; 
-typedef lval*(*lbuiltin)(lenv*, lval*); 
-
-enum { LVAL_ERR, LVAL_NUM, LVAL_SYM, LVAL_FUN, LVAL_SEXPR, LVAL_QEXPR };
-
-// Forward function declarations
-lval* lval_num(double x); 
-lval* lval_err(char* fmt, ...); 
-lval* lval_sym(char* s); 
-lval* lval_sexpr(void);
-lval* lval_qexpr(void); 
-lval* lval_fun(lbuiltin func); 
-lval* lval_lambda(lval* formals, lval* body); 
-void lval_del(lval* v); 
-lval* lval_add(lval* v, lval* x); 
-lval* lval_pop(lval* v, int i); 
-lval* lval_take(lval* v, int i); 
-lval* lval_copy(lval* v); 
-lval* lval_read_num(mpc_ast_t* t); 
-lval* lval_read(mpc_ast_t* t); 
-lval* lval_eval_sexpr(lenv* e, lval* v); 
-lval* lval_eval(lenv* e, lval* v); 
-void lval_expr_print(lval* v, char open, char close); 
-void lval_print(lval* v); 
-void lval_println(lval* v); 
-lenv* lenv_new(void); 
-void lenv_del(lenv* v); 
-lval* lenv_get(lenv* e, lval* k); 
-void lenv_put(lenv* e, lval* k, lval* v); 
-void lenv_def(lenv* e, lval* k, lval* v); 
-lenv* lenv_copy(lenv* e); 
-char* ltype_name(int t); 
-lval* builtin_op(lenv* e, lval* a, char* op); 
-lval* builtin_add(lenv* e, lval* a); 
-lval* builtin_sub(lenv* e, lval* a); 
-lval* builtin_mul(lenv* e, lval* a); 
-lval* builtin_div(lenv* e, lval* a); 
-lval* builtin_mod(lenv* e, lval* a); 
-lval* builtin_head(lenv* e, lval* a); 
-lval* builtin_tail(lenv* e, lval* a); 
-lval* builtin_list(lenv* e, lval* a); 
-lval* builtin_eval(lenv* e, lval* a); 
-lval* builtin_join(lenv* e, lval* a); 
-lval* lval_join(lval* x, lval* y); 
-lval* builtin_len(lenv* e, lval* a); 
-lval* builtin_cons(lenv* e, lval* a); 
-lval* builtin_var(lenv* e, lval* a, char* func); 
-lval* builtin_def(lenv* e, lval* a); 
-lval* builtin_put(lenv* e, lval* a); 
-lval* builtin_lambda(lenv* e, lval* a); 
-void lenv_add_builtin(lenv* e, char* name, lbuiltin func); 
-void lenv_add_builtins(lenv* e); 
-
 /* LISP Value and Associated Functions */ 
-
-struct lval {
-
-  // Basic 
-  int type;
-  double num; 
-  char* err;
-  char* sym;
-
-  // Functions 
-  lbuiltin builtin;
-  lenv* env; 
-  lval* formals; // function args 
-  lval* body;  // function body
-
-  // maintain count and pointer to list of sval* to represent s expressions/q expressions (this is the fundamental cons cell in LISP)
-  int count;
-  struct lval** cell;
-};
 
 // initalize lval num type 
 lval* lval_num(double x) {
@@ -355,12 +280,13 @@ lval* lval_eval_sexpr(lenv* e, lval* v) {
   // ensure first element is function 
   lval* f = lval_pop(v, 0);
   if (f->type != LVAL_FUN) {
+    lval* err = lval_err("S-Expression starts with incorrect type. Got %s, Expected %s.", ltype_name(f->type), ltype_name(LVAL_FUN));
     lval_del(v); 
     lval_del(f);
-    return lval_err("First element is not a function. Got type %s", ltype_name(f->type));
+    return err; 
   }
 
-  lval* result = f->builtin(e,v);
+  lval* result = lval_call(e,f,v);
   lval_del(f);
   return result;
 }
@@ -417,19 +343,42 @@ void lval_println(lval* v) {
   putchar('\n');   
 }
 
+lval* lval_call(lenv* e, lval* f, lval* a){
+  
+  if(f->builtin){
+    return f->builtin(e,a); 
+  }
 
+  int given = a->count; 
+  int total = f->formals->count; 
 
+  while(a->count){
+    
+    if(f->formals->count == 0){
+      lval_del(a); 
+      return lval_err("Function passed too many arguments. Got %i, Expected %i.", given, total); 
+    }
+
+    lval* sym = lval_pop(f->formals, 0);
+    lval* val = lval_pop(a, 0); 
+
+    lenv_put(f->env, sym, val); 
+    lval_del(sym); 
+    lval_del(val); 
+  }
+
+  lval_del(a); 
+
+  if(f->formals->count == 0){
+    f->env->par = e; 
+    return builtin_eval(f->env, lval_add(lval_sexpr(), lval_copy(f->body))); 
+  } else {
+    return lval_copy(f); 
+  }
+}
 
 
 /* LISP Environment and Associated Functions */
-
-// maintains mapping of variable names and LISP Values 
-struct lenv{
-  lenv* par; // parent environment to allow functions to access global environment (which contain other builtins)  
-  int count; 
-  char** syms; 
-  lval** vals; 
-}; 
 
 // initalize new env 
 lenv* lenv_new(void){
@@ -566,7 +515,7 @@ lval* builtin_op(lenv* e, lval* a, char* op) {
     if (a->cell[i]->type != LVAL_NUM) {
       char* type = ltype_name(a->cell[i]->type);
       lval_del(a); 
-      return lval_err("Function '%s' passed incorrect type for argument %i. Got %s, Expected Number", op, i, type);
+      return lval_err("Function '%s' passed incorrect type for argument %i. Got %s, Expected Number.", op, i, type);
     }
   }
 
@@ -661,7 +610,7 @@ lval* builtin_eval(lenv* e, lval* a) {
 lval* builtin_join(lenv* e, lval* a) {
 
   for (int i = 0; i < a->count; i++) {
-    LASSERT(a, a->cell[i]->type == LVAL_QEXPR, "Function 'join' passed incorrect type. Got %s, Expected %s", ltype_name(a->cell[0]->type), ltype_name(LVAL_QEXPR));
+    LASSERT(a, a->cell[i]->type == LVAL_QEXPR, "Function 'join' passed incorrect type. Got %s, Expected %s.", ltype_name(a->cell[0]->type), ltype_name(LVAL_QEXPR));
   }
 
   lval* x = lval_pop(a, 0);
