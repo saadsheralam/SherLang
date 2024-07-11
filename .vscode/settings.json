@@ -59,6 +59,7 @@
   "files.associations": {
     "*.ejs": "html",
     ".fantomasignore": "ignore",
-    "readline.h": "c"
+    "readline.h": "c",
+    "variant": "c"
   }
 }

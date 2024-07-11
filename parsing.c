@@ -160,6 +160,7 @@ lval* lval_pop(lval* v, int i) {
 
   // Reallocate the memory used 
   v->cell = realloc(v->cell, sizeof(lval*) * v->count);
+
   return x;
 }
 
@@ -633,8 +634,13 @@ lenv* lenv_copy(lenv* e){
     func, args->count, num)
 
 #define LASSERT_NOT_EMPTY(func, args, index) \
-  LASSERT(args, args->cell[index]->count != 0, \
+  LASSERT(args, args->cell[index]->count != 0 || args->cell[index]->str != NULL, \
     "Function '%s' passed {} for argument %i.", func, index); 
+
+#define LASSERT_TWOTYPES(func, args, index, type1, type2) \
+  LASSERT(args, args->cell[index]->type == type1 || args->cell[index]->type == type2, \
+    "Function '%s' passed incorrect type for argument %i. Got %s, exepected %s or %s", \
+    func, index, ltype_name(args->cell[index]->type), ltype_name(type1), ltype_name(type2))
 
 char* ltype_name(int t) {
   switch(t) {
@@ -821,21 +827,43 @@ lval* builtin_head(lenv* e, lval* a){
   // q expr should not be empty 
   // head should only receive 1 argument  
   LASSERT_NUM("head", a, 1); 
-  LASSERT_TYPE("head", a, 0, LVAL_QEXPR); 
+  LASSERT_TWOTYPES("head", a, 0, LVAL_QEXPR, LVAL_STR); 
   LASSERT_NOT_EMPTY("head", a, 1); 
 
-  lval* v = lval_take(a, 0);
-  while (v->count > 1) { lval_del(lval_pop(v, 1)); }
-  return v;
+  lval* v = lval_take(a, 0); // takes the first arg 
+  if(v->type == LVAL_QEXPR){
+    while (v->count > 1) { 
+      // lval* x = lval_pop(v,1); 
+      // lval_print(x); 
+      // printf("\n"); 
+      lval_del(lval_pop(v,1)); 
+    }
+  }
+
+  if(v->type == LVAL_STR){
+    memset((v->str)+1, 0, strlen(v->str) * sizeof(char));
+    char* first = realloc(v->str, sizeof(char)); 
+    v = lval_str(first); 
+  }
+
+  return v; 
 }
 
 lval* builtin_tail(lenv* e, lval* a){
   LASSERT_NUM("tail", a, 1); 
-  LASSERT_TYPE("tail", a, 0, LVAL_QEXPR); 
+  LASSERT_TWOTYPES("tail", a, 0, LVAL_QEXPR, LVAL_STR); 
   LASSERT_NOT_EMPTY("tail", a, 1);
 
   lval* v = lval_take(a, 0);
-  lval_del(lval_pop(v, 0));
+
+  if(v->type == LVAL_QEXPR){
+    lval_del(lval_pop(v, 0));
+  }
+
+  if(v->type == LVAL_STR){ 
+    v = lval_str(v->str + 1); 
+  }
+
   return v;
 }
 
@@ -856,18 +884,76 @@ lval* builtin_eval(lenv* e, lval* a) {
 
 lval* builtin_join(lenv* e, lval* a) {
 
+  bool not_all_qexpr = false; 
+  bool not_all_strs = false; 
+
   for (int i = 0; i < a->count; i++) {
-    LASSERT(a, a->cell[i]->type == LVAL_QEXPR, "Function 'join' passed incorrect type. Got %s, Expected %s.", ltype_name(a->cell[0]->type), ltype_name(LVAL_QEXPR));
+    if(a->cell[i]->type != LVAL_QEXPR){
+      not_all_qexpr = true; 
+    }
+    // LASSERT(a, a->cell[i]->type == LVAL_QEXPR, "Function 'join' passed incorrect type. Got %s, Expected %s.", ltype_name(a->cell[0]->type), ltype_name(LVAL_QEXPR));
   }
 
-  lval* x = lval_pop(a, 0);
-
-  while (a->count) {
-    x = lval_join(x, lval_pop(a, 0));
+  for(int i = 0; i < a->count; i++){
+    if(a->cell[i]->type != LVAL_STR){
+      not_all_strs = true; 
+    }
   }
 
-  lval_del(a);
-  return x;
+  // either all should be qexprs or all should be strs 
+  if (not_all_qexpr ^ not_all_strs) {
+    lval* x; 
+
+    if(not_all_strs) {
+      x = lval_pop(a, 0);
+
+      while (a->count) {
+        x = lval_join(x, lval_pop(a, 0));
+      }
+
+      lval_del(a);
+    }
+
+    if(not_all_qexpr) {
+      
+      // allocated memory for larger string and concatenate 
+      int total_size = 0; 
+      for(int i = 0; i < a->count; i++){
+        total_size += strlen(a->cell[i]->str); 
+      }
+
+      // allocate mem for a larger string 
+      char* concat_str = malloc(sizeof(char) * (total_size+1)); 
+
+      // concatenate strings 
+      for(int i = 0; i < a->count; i++){
+        strcat(concat_str, a->cell[i]->str); 
+      }
+
+      lval_del(a); 
+      x = lval_str(concat_str);  
+    }
+
+    return x;
+
+  } else {
+
+    if(not_all_qexpr) {
+      for (int i = 0; i < a->count; i++) {
+        LASSERT(a, a->cell[i]->type == LVAL_QEXPR, "Function 'join' passed incorrect type for argument %i. Got %s, Expected %s.", i,ltype_name(a->cell[i]->type), ltype_name(LVAL_QEXPR));
+      }
+    }
+
+    if(not_all_strs) {
+      for (int i = 0; i < a->count; i++) {
+        LASSERT(a, a->cell[i]->type == LVAL_STR, "Function 'join' passed incorrect type for argument %i. Got %s, Expected %s.", i,ltype_name(a->cell[i]->type), ltype_name(LVAL_STR));
+      }
+    }
+
+    return lval_err("Incorrect types to join. Only Q-expressions or strings can be joined."); 
+
+  }
+
 }
 
 lval* builtin_len(lenv* e, lval* a){
