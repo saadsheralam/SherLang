@@ -403,18 +403,22 @@ lval* lval_eval(lenv* e, lval* v) {
 
 // Printing LISP values to terminal 
 void lval_expr_print(lval* v, char open, char close) {
-  putchar(open);
-  for (int i = 0; i < v->count; i++) {
-    
-    // print lval within cell 
-    lval_print(v->cell[i]);
-    
-    // don't print trailing space 
-    if (i != (v->count-1)) {
-      putchar(' ');
+  if(v->count == 0){
+    printf("ok"); 
+  } else {
+    putchar(open);
+    for (int i = 0; i < v->count; i++) {
+      
+      // print lval within cell 
+      lval_print(v->cell[i]);
+      
+      // don't print trailing space 
+      if (i != (v->count-1)) {
+        putchar(' ');
+      }
     }
+    putchar(close);
   }
-  putchar(close);
 }
 
 void lval_print_str(lval* v) {
