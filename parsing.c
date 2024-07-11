@@ -1047,7 +1047,7 @@ lval* builtin_lambda(lenv* e, lval* a){
 
 lval* builtin_if(lenv* e, lval* a){
   LASSERT_NUM("if", a, 3);
-  LASSERT_TYPE("if", a, 0, LVAL_NUM); 
+  LASSERT_TWOTYPES("if", a, 0, LVAL_NUM, LVAL_BOOL); 
   LASSERT_TYPE("if", a, 1, LVAL_QEXPR); 
   LASSERT_TYPE("if", a, 2, LVAL_QEXPR); 
 
