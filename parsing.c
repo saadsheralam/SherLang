@@ -1074,7 +1074,7 @@ lval* builtin_if(lenv* e, lval* a){
 lval* builtin_load(lenv* e, lval* a) {
   LASSERT_NUM("load", a, 1);
   LASSERT_TYPE("load", a, 0, LVAL_STR);
-
+    
   // Parse file given by string name
   mpc_result_t r;
   if (mpc_parse_contents(a->cell[0]->str, SherLang, &r)) {
@@ -1086,8 +1086,8 @@ lval* builtin_load(lenv* e, lval* a) {
     // evaluate expression one by one
     while (expr->count) {
       lval* instr = lval_pop(expr, 0); 
-      printf("\n"); 
-      lval_print(instr); 
+    //   printf("\n"); 
+    //   lval_print(instr); 
       lval* x = lval_eval(e, instr);
 
       if (x->type == LVAL_ERR) { 
@@ -1229,6 +1229,24 @@ int main(int argc, char** argv) {
 
   lenv* e = lenv_new();
   lenv_add_builtins(e);
+
+  // load standard library 
+  lval* std_name = lval_str("stdlib.slang"); 
+  lval* load_args = lval_qexpr(); 
+  lval_add(load_args, std_name); 
+  builtin_load(e, load_args); 
+
+
+//   printf("Current Environment: \n"); 
+//   for(int i = 0; i < e->count; i++){
+//     printf("%s", e->syms[i]);  
+//     printf(" "); 
+//     lval_print(e->vals[i]); 
+//     printf("\n"); 
+//   }
+
+//   printf("\n"); 
+  
 
   // Run interactive prompt in terminal 
   if (argc == 1) {
