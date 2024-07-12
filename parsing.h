@@ -1,6 +1,5 @@
 #ifndef SHERLANG_H
 #define SHERLANG_H
-#include "mpc.h"
 #include<stdbool.h>
 
 
@@ -42,17 +41,10 @@ struct lenv{
   lval** vals; 
 }; 
 
-// Parsers
-mpc_parser_t* Number;
-mpc_parser_t* Symbol;
-mpc_parser_t* String;
-mpc_parser_t* Comment; 
-mpc_parser_t* Sexpr;
-mpc_parser_t* Qexpr;
-mpc_parser_t* Expr;
-mpc_parser_t* SherLang;
 
 // Function declarations
+
+// LISP val functions
 lval* lval_num(double x); 
 lval* lval_err(char* fmt, ...); 
 lval* lval_sym(char* s); 
@@ -68,9 +60,10 @@ lval* lval_pop(lval* v, int i);
 lval* lval_take(lval* v, int i); 
 lval* lval_copy(lval* v); 
 int lval_eq(lval* x, lval* y); 
-lval* lval_read_num(mpc_ast_t* t);
-lval* lval_read_str(mpc_ast_t* t);  
-lval* lval_read(mpc_ast_t* t); 
+lval* lval_read_str(char* s, int* i);
+lval* lval_read_sym(char* s, int* i); 
+lval* lval_read_expr(char* s, int* i, char end);  
+lval* lval_read(char* s, int* i); 
 lval* lval_eval_sexpr(lenv* e, lval* v); 
 lval* lval_eval(lenv* e, lval* v); 
 void lval_expr_print(lval* v, char open, char close); 
@@ -78,6 +71,8 @@ void lval_print_str(lval* v);
 void lval_print(lval* v); 
 void lval_println(lval* v); 
 lval* lval_call(lenv* e, lval* f, lval* a); 
+
+// env functions 
 lenv* lenv_new(void); 
 void lenv_del(lenv* v); 
 lval* lenv_get(lenv* e, lval* k); 
@@ -85,6 +80,8 @@ void lenv_put(lenv* e, lval* k, lval* v);
 void lenv_def(lenv* e, lval* k, lval* v); 
 lenv* lenv_copy(lenv* e); 
 char* ltype_name(int t); 
+
+// builtin functions 
 lval* builtin_op(lenv* e, lval* a, char* op); 
 lval* builtin_add(lenv* e, lval* a); 
 lval* builtin_sub(lenv* e, lval* a); 
@@ -118,5 +115,11 @@ lval* builtin_print(lenv* e, lval* a);
 lval* builtin_error(lenv* e, lval* a); 
 void lenv_add_builtin(lenv* e, char* name, lbuiltin func); 
 void lenv_add_builtins(lenv* e); 
+
+// parsing functions 
+lval* lval_read_expr(char* s, int* i, char end); 
+char lval_str_unescape(char x); 
+char* lval_str_escape(char x); 
+void lval_print_str(lval* v); 
 
 #endif 
