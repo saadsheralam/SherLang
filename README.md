@@ -10,6 +10,15 @@ SherLang supports the following features:
 - [x] Functions, Recursive Functions, and Lamba Functions
 - [x] Builtin Functions:  *head*, *tail*, *join*, *len*, *list*, *cons*, *def*, *put*, *lambda*, *load*, *print*, *error* 
 - [x] A Standard Library 
+- [x] Command Line Arguments 
+- [x] Load SherLang code from a .slang File
+
+### Potential Improvements 
+- [ ] Add support for user defined types (e.g. Structs) 
+- [ ] Add OS interaction through system calls 
+- [ ] Improve variable look-ups by using a Hash Table
+- [ ] Implement a Garbage Collector 
+- [ ] Introduce Static Typing
 
 The language is purposefully kept simple and lightweight. The implemented constructs are chosen carefully such that these constructs can be easily used to implement any new complex feature. 
 
@@ -112,3 +121,27 @@ SherLang> reverse {1 2 3 4 5}
 
 
 ```
+More useful functions are defined in the [Standard Library](https://github.com/saadsheralam/SherLang/blob/main/stdlib.slang). 
+
+### Building 
+
+To build and run the project locally, you can follow the following steps: 
+1. Clone the repository: 
+```
+https://github.com/saadsheralam/SherLang.git
+```
+2. If you do not have gcc (compiler for C) installed, install it by following [these](https://gcc.gnu.org/install/) instructions. 
+
+3. Navigate to the cloned directory. 
+4. Run the following command to compile the project and link the lreadline library: 
+```
+gcc parsing.c -o parsing -lreadline
+```
+
+6. Run the project and write your first program in SherLang: 
+```
+./parsing 
+```
+
+### Contributing 
+Feel free to create a new issue in case you find a bug/want to have a feature added. Proper PRs are welcome.
