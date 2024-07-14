@@ -386,7 +386,7 @@ lval *lval_read_sym(char *s, int *i)
 	while (strchr(
 			   "abcdefghijklmnopqrstuvwxyz"
 			   "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-			   "0123456789_.+-*\\/=<>!&",
+			   "0123456789_.+-*\\%/=<>!&",
 			   s[*i]) &&
 		   s[*i] != '\0')
 	{
@@ -494,7 +494,7 @@ lval *lval_read(char *s, int *i)
 	else if (strchr(
 				 "abcdefghijklmnopqrstuvwxyz"
 				 "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-				 "0123456789_+-*\\/=<>!&",
+				 "0123456789_+-*\\%/=<>!&",
 				 s[*i]))
 	{
 		x = lval_read_sym(s, i);
@@ -1304,11 +1304,22 @@ lval *builtin_join(lenv *e, lval *a)
 lval *builtin_len(lenv *e, lval *a)
 {
 	LASSERT_NUM("len", a, 1);
-	LASSERT_TYPE("len", a, 0, LVAL_QEXPR);
+	LASSERT_TWOTYPES("len", a, 0, LVAL_QEXPR, LVAL_STR);
+	printf("HERE"); 
 
-	double len = a->cell[0]->count;
-	lval_del(a);
-	return lval_num(len);
+	if(a->type == LVAL_QEXPR){
+		double len = a->cell[0]->count;
+		lval_del(a);
+		return lval_num(len);
+	}
+
+	if(a->type == LVAL_STR){
+		int len = strlen(a->str); 
+		lval_del(a); 
+		return lval_num(len); 
+	}
+
+	return lval_err("This error is not possible"); 
 }
 
 lval *builtin_cons(lenv *e, lval *a)
